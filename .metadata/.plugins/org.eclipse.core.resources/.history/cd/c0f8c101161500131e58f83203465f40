@@ -1,0 +1,116 @@
+package com.example.cameratest;
+
+import java.io.IOException;
+import java.util.List;
+
+import android.annotation.SuppressLint;
+import android.content.Context;
+import android.hardware.Camera;
+import android.util.Log;
+import android.view.Surface;
+import android.view.SurfaceHolder;
+import android.view.SurfaceHolder.Callback;
+import android.view.SurfaceView;
+import android.view.WindowManager;
+
+@SuppressLint("NewApi")
+public class PreviewSurface extends SurfaceView implements Callback {
+	String test;
+	private SurfaceHolder m_holder;
+	private Camera m_camera;
+
+	public PreviewSurface(Context context) {
+		super(context);
+		m_holder = getHolder();
+		m_holder.addCallback(this);
+		m_holder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
+	}
+
+	public PreviewSurface(Context context, int displayWidth, int displayHeight) {
+		super(context);
+		m_holder = getHolder();
+		m_holder.addCallback(this);
+		m_holder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
+	}
+
+	@Override
+	public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+		Camera.Parameters parameters = m_camera.getParameters();
+		// set white balance		
+		if (parameters.isAutoWhiteBalanceLockSupported()) {
+			parameters.setAutoWhiteBalanceLock(true);
+			parameters.setWhiteBalance(Camera.Parameters.WHITE_BALANCE_AUTO);
+		}
+		// set auato focus
+		//parameters.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
+		// set orientation, but now orientation is fixed
+		int rotation = ((WindowManager) getContext().getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay().getRotation();
+		switch (rotation) {
+			case Surface.ROTATION_0:
+				m_camera.setDisplayOrientation(90);
+				break;
+			case Surface.ROTATION_90:
+				break;
+			case Surface.ROTATION_180:
+				m_camera.setDisplayOrientation(270);
+				break;
+			case Surface.ROTATION_270:
+				m_camera.setDisplayOrientation(180);
+				break;
+		}
+
+		// setting best preview size
+		Camera.Size myBestPreviewSize = getBestPreviewSize(width, height, parameters);
+		if (myBestPreviewSize != null) {
+			parameters.setPreviewSize(myBestPreviewSize.width, myBestPreviewSize.height);
+			parameters.setPictureSize(myBestPreviewSize.width, myBestPreviewSize.height);
+		}		
+		m_camera.setParameters(parameters);
+		m_camera.startPreview();
+	}
+
+	// get optimal size
+	private Camera.Size getBestPreviewSize(int width, int height, Camera.Parameters parameters) {
+		Camera.Size previewBestSize = null;
+		List<Camera.Size> previewSizeList = parameters.getSupportedPreviewSizes();
+
+		previewBestSize = previewSizeList.get(0);
+
+		for (int i = 1; i < previewSizeList.size(); i++) {
+			if ((previewSizeList.get(i).width * previewSizeList.get(i).height) > (previewBestSize.width * previewBestSize.height)) {
+				previewBestSize = previewSizeList.get(i);
+			}
+		}
+
+		return previewBestSize;
+	}
+
+	// surface method
+	@Override
+	public void surfaceCreated(SurfaceHolder holder) {
+		m_camera = Camera.open();
+		Log.i("camera","PreviewSurface: you've open a camera");
+		try {
+			m_camera.setPreviewDisplay(holder);
+		} catch (IOException e) {
+			m_camera.release();
+			m_camera = null;
+		}
+	}
+
+	// surface method
+	@Override
+	public void surfaceDestroyed(SurfaceHolder holder) {
+		if (m_camera != null) {
+			m_camera.stopPreview();
+			m_camera.release();
+			m_camera = null;
+		}
+	}
+
+	public Camera getCamera() {
+		if(m_camera == null)
+			Log.i("camera", "PreviewSurface: damn it this camera is null");
+		return m_camera;
+	}	
+}

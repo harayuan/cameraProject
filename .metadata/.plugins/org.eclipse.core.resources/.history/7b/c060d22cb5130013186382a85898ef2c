@@ -1,0 +1,48 @@
+package com.example.cameratest;
+
+import android.app.Activity;
+import android.os.Bundle;
+import android.view.Menu;
+import android.view.View;
+import android.widget.AdapterView;
+import android.widget.AdapterView.OnItemClickListener;
+import android.widget.Gallery;
+import android.widget.Toast;
+
+public class GalleryActivity extends Activity {
+
+	@Override
+	protected void onCreate(Bundle savedInstanceState) {
+		super.onCreate(savedInstanceState);
+		setContentView(R.layout.activity_gallery);
+	}
+
+	@Override
+	public boolean onCreateOptionsMenu(Menu menu) {
+		// Inflate the menu; this adds items to the action bar if it is present.
+		getMenuInflater().inflate(R.menu.gallery, menu);
+
+		//set gallery
+		Gallery gallery = (Gallery) findViewById(R.id.gallery);
+		ImageAdapter imageAdapter = new ImageAdapter(this);
+		//設定圖片來源
+		Integer[] mImageIds = {
+		R.drawable.focus, R.drawable.ic_launcher
+		};
+		//設定圖片的位置
+		imageAdapter.setmImageIds(mImageIds);
+		//圖片高度
+		imageAdapter.setHeight(100);
+		//圖片寬度
+		imageAdapter.setWidth(200);
+		gallery.setAdapter(imageAdapter);
+		gallery.setOnItemClickListener(new OnItemClickListener() {
+			public void onItemClick(AdapterView parent, View view, int position, long id) {
+				Toast.makeText(this, "您選的是第" + position + "張圖", Toast.LENGTH_SHORT).show();
+			}
+		});
+
+		return true;
+	}
+
+}

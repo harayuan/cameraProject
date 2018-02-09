@@ -1,0 +1,205 @@
+package com.example.cameratest;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+import android.annotation.SuppressLint;
+import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.ImageFormat;
+import android.graphics.Rect;
+import android.graphics.YuvImage;
+import android.hardware.Camera;
+import android.hardware.Camera.Size;
+import android.util.Log;
+import android.view.Surface;
+import android.view.SurfaceHolder;
+import android.view.SurfaceHolder.Callback;
+import android.view.SurfaceView;
+import android.view.WindowManager;
+
+@SuppressLint("NewApi")
+public class PreviewSurface extends SurfaceView implements Callback {
+	private SurfaceHolder m_holder;
+	private Camera m_camera;
+	private Camera.Parameters m_parameters;
+	private byte[] m_buffer;
+
+	public PreviewSurface(Context context) {
+		super(context);
+		init();
+	}
+
+	public PreviewSurface(Context context, int displayWidth, int displayHeight) {
+		super(context);
+		init();
+	}
+
+	public void init() {
+		m_holder = getHolder();
+		m_holder.addCallback(this);
+		m_holder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
+	}
+
+	public Bitmap getPic(int x, int y, int width, int height) {
+		System.gc();
+		Bitmap bitmap = null;
+		Size size = m_parameters.getPreviewSize();
+
+		YuvImage yuvimage = new YuvImage(m_buffer, ImageFormat.NV21, size.width, size.height, null);
+		ByteArrayOutputStream outStream = new ByteArrayOutputStream();
+		yuvimage.compressToJpeg(new Rect(x, y, width, height), 100, outStream); // make JPG
+		bitmap = BitmapFactory.decodeByteArray(outStream.toByteArray(), 0, outStream.size());
+		if (bitmap != null) {
+			//Log.i(TAG, "getPic() WxH:" + b.getWidth() + "x" + b.getHeight());
+		} else {
+			//Log.i(TAG, "getPic(): Bitmap is null..");
+		}
+		yuvimage = null;
+		outStream = null;
+		System.gc();
+		return bitmap;
+	}
+
+	private void updateBufferSize() {
+		m_buffer = null;
+		System.gc();
+		// prepare a buffer for copying preview data to
+		int h = m_camera.getParameters().getPreviewSize().height;
+		int w = m_camera.getParameters().getPreviewSize().width;
+		int bitsPerPixel = ImageFormat.getBitsPerPixel(m_camera.getParameters().getPreviewFormat());
+		m_buffer = new byte[w * h * bitsPerPixel / 8];
+		//Log.i("surfaceCreated", "buffer length is " + mBuffer.length + " bytes");
+	}
+
+	// surface method
+	@Override
+	public void surfaceCreated(SurfaceHolder holder) {
+		m_camera = Camera.open();
+		Log.i("camera", "PreviewSurface: you've open a camera");
+		try {
+			m_camera.setPreviewDisplay(holder);
+			updateBufferSize();
+			m_camera.addCallbackBuffer(m_buffer);
+			m_camera.setPreviewCallbackWithBuffer(new Camera.PreviewCallback() {
+				public synchronized void onPreviewFrame(byte[] data, Camera c) {
+					if (m_camera != null) { // there was a race condition when onStop() was called..
+						m_camera.addCallbackBuffer(m_buffer); // it was consumed by the call, add it back
+					}
+				}
+			});
+		} catch (IOException e) {
+			if (m_camera != null) {
+				m_camera.release();
+				m_camera = null;
+			}
+		}
+	}
+
+	@Override
+	public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+		m_parameters = m_camera.getParameters();
+		// set white balance		
+		if (m_parameters.isAutoWhiteBalanceLockSupported()) {
+			m_parameters.setAutoWhiteBalanceLock(true);
+			m_parameters.setWhiteBalance(Camera.Parameters.WHITE_BALANCE_AUTO);
+		}
+		// set auto focus mode		
+		m_parameters.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
+		// set orientation
+		m_parameters.set("orientation", "portrait");
+		int rotation = ((WindowManager) getContext().getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay().getRotation();
+		switch (rotation) {
+			case Surface.ROTATION_0:
+				m_camera.setDisplayOrientation(90);
+				break;
+			case Surface.ROTATION_90:
+				break;
+			case Surface.ROTATION_180:
+				m_camera.setDisplayOrientation(270);
+				break;
+			case Surface.ROTATION_270:
+				m_camera.setDisplayOrientation(180);
+				break;
+		}
+		// setting best preview size
+		Log.e("test", String.format("%d", m_parameters.getPreviewSize().height));
+		Camera.Size myBestPreviewSize = getBestPreviewSize(width, height);
+		if (myBestPreviewSize != null) {
+			m_parameters.setPreviewSize(myBestPreviewSize.width, myBestPreviewSize.height);
+			m_parameters.setPictureSize(myBestPreviewSize.width, myBestPreviewSize.height);
+		}
+		m_camera.setParameters(m_parameters);
+		m_camera.startPreview();
+	}
+
+	// get optimal size
+	private Camera.Size getBestPreviewSize(int width, int height) {
+		Camera.Size bestPreviewSize = null;
+		List<Camera.Size> previewSizeList = m_parameters.getSupportedPreviewSizes();
+
+		bestPreviewSize = previewSizeList.get(0);
+
+		for (int i = 1; i < previewSizeList.size(); i++) {
+			if ((previewSizeList.get(i).width * previewSizeList.get(i).height) > (bestPreviewSize.width * bestPreviewSize.height)) {
+				bestPreviewSize = previewSizeList.get(i);
+			}
+		}
+
+		return bestPreviewSize;
+	}
+
+	// surface method
+	@Override
+	public void surfaceDestroyed(SurfaceHolder holder) {
+		if (m_camera != null) {
+			m_camera.stopPreview();
+			m_camera.release();
+			m_camera = null;
+		}
+	}
+
+	public Camera getCamera() {
+		if (m_camera == null)
+			Log.i("camera", "PreviewSurface: damn it this camera is null");
+		return m_camera;
+	}
+
+	public void setCameraFocus() {
+		m_camera.autoFocus(new Camera.AutoFocusCallback() {
+			@Override
+			public void onAutoFocus(boolean success, Camera camera) {
+				if (success)
+					Log.i("camera", "PreviewSurface: you focus successfully");
+				if (!success)
+					Log.e("camera", "PreviewSurface: focus failed");
+			}
+		});
+	}
+
+	@SuppressLint("NewApi")
+	public void setFocusRect(int x, int y, int iconWidth) {
+		if (m_camera == null)
+			Log.e("camera", "PreviewSurface: cannot find mCamera");
+		Camera.Parameters parameters = m_camera.getParameters();
+
+		if (parameters.getMaxNumFocusAreas() == 0) {
+			return;
+		}
+
+		Rect focusRect = new Rect();
+		// calculate the focus area
+		focusRect.set(x - iconWidth / 2, y - iconWidth / 2, x + iconWidth / 2, y + iconWidth / 2);
+		ArrayList<Camera.Area> focusArea = new ArrayList<Camera.Area>();
+		focusArea.add(new Camera.Area(focusRect, 1000));
+
+		parameters.setFocusAreas(focusArea);
+		m_camera.setParameters(parameters);
+		m_camera.startPreview();
+		Log.i("camera", "PreviewSurface: has added focusArea: " + x + ", " + y);
+		setCameraFocus();
+	}
+}

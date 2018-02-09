@@ -1,0 +1,4 @@
+INDEX VERSION 1.126+C:\Users\FourLine\Dropbox\camera project\.metadata\.plugins\org.eclipse.jdt.core
+124211941.index
+1974589539.index
+470707187.index

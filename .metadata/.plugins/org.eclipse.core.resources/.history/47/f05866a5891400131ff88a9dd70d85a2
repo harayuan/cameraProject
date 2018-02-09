@@ -1,0 +1,213 @@
+package com.example.cameratest;
+
+import java.util.ArrayList;
+
+import android.annotation.SuppressLint;
+import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.Rect;
+import android.graphics.drawable.Drawable;
+import android.hardware.Camera;
+import android.util.AttributeSet;
+import android.util.Log;
+import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
+import android.view.View;
+
+public class TouchView extends View {
+	private PreviewSurface mPreviewSurface;
+
+	private ScaleGestureDetector mScaleDetector;
+	private float mScaleFactor = 1.f;
+
+	private Drawable mIcon;
+	private float mPosX;
+	private float mPosY;
+
+	private float mLastTouchX;
+	private float mLastTouchY;
+
+	private int displayWidth;
+	private int displayHeight;
+
+	private static final int INVALID_POINTER_ID = -1;
+	// The "active pointer" is the one currently moving our object.
+	private int mActivePointerId = INVALID_POINTER_ID;
+
+	public TouchView(Context context, int displayWidth, int displayHeight, PreviewSurface mPreviewSurface) {
+		this(context, null, 0);
+		this.displayWidth = displayWidth;
+		this.displayHeight = displayHeight;
+		this.mPreviewSurface = mPreviewSurface;
+		if (mPreviewSurface.getCamera() == null)
+			Log.i("camera", "TouchView: mCamera is null in first");
+
+		mIcon = context.getResources().getDrawable(R.drawable.focus);
+		mIcon.setBounds(0, 0, mIcon.getIntrinsicWidth(), mIcon.getIntrinsicWidth());
+		mPosX = displayWidth / 2 - mIcon.getIntrinsicWidth() / 2;
+		mPosY = displayHeight / 2 - mIcon.getIntrinsicWidth() / 2;
+
+		// Create our ScaleGestureDetector
+		mScaleDetector = new ScaleGestureDetector(context, new ScaleListener());
+	}
+
+	public TouchView(Context context, AttributeSet attrs, int displayWidth, int displayHeight, PreviewSurface mPreviewSurface) {
+		this(context, attrs, 0);
+		this.displayWidth = displayWidth;
+		this.displayHeight = displayHeight;
+		this.mPreviewSurface = mPreviewSurface;
+		if (mPreviewSurface.getCamera() == null)
+			Log.i("camera", "TouchView: mCamera is null in second");
+
+		mIcon = context.getResources().getDrawable(R.drawable.focus);
+		mIcon.setBounds(0, 0, mIcon.getIntrinsicWidth(), mIcon.getIntrinsicWidth());
+		mPosX = displayWidth / 2 - mIcon.getIntrinsicWidth() / 2;
+		mPosY = displayHeight / 2 - mIcon.getIntrinsicWidth() / 2;
+
+		// Create our ScaleGestureDetector
+		mScaleDetector = new ScaleGestureDetector(context, new ScaleListener());
+	}
+
+	public TouchView(Context context, AttributeSet attrs, int defStyle) {
+		super(context, attrs, defStyle);
+	}
+
+	@Override
+	public void onDraw(Canvas canvas) {
+		super.onDraw(canvas);
+
+		canvas.save();
+		canvas.translate(mPosX, mPosY);
+		canvas.scale(mScaleFactor, mScaleFactor);
+		mIcon.draw(canvas);
+		canvas.restore();
+	}
+
+	@Override
+	public boolean onTouchEvent(MotionEvent ev) {
+		// Let the ScaleGestureDetector inspect all events.
+		mScaleDetector.onTouchEvent(ev);
+
+		final int action = ev.getAction();
+		switch (action & MotionEvent.ACTION_MASK) {
+			case MotionEvent.ACTION_DOWN: {
+				final float x = ev.getX();
+				final float y = ev.getY();
+
+				mLastTouchX = x;
+				mLastTouchY = y;
+				mActivePointerId = ev.getPointerId(0);
+
+				setFocusRect((int) x, (int) y);
+				break;
+			}
+
+			case MotionEvent.ACTION_MOVE: {
+				final int pointerIndex = ev.findPointerIndex(mActivePointerId);
+				final float x = ev.getX(pointerIndex);
+				final float y = ev.getY(pointerIndex);
+
+				// Only move if the ScaleGestureDetector isn't processing a gesture.
+				if (!mScaleDetector.isInProgress()) {
+					final float dx = x - mLastTouchX;
+					final float dy = y - mLastTouchY;
+
+					mPosX += dx;
+					if (mPosX < 0)
+						mPosX = 0;
+					else if (mPosX + getIconWidth() > displayWidth)
+						mPosX = displayWidth - getIconWidth();
+					mPosY += dy;
+					if (mPosY < 0)
+						mPosY = 0;
+					else if (mPosY + getIconWidth() > displayHeight)
+						mPosY = displayHeight - getIconWidth();
+					invalidate();
+				}
+
+				mLastTouchX = x;
+				mLastTouchY = y;
+
+				break;
+			}
+
+			case MotionEvent.ACTION_UP: {
+				mActivePointerId = INVALID_POINTER_ID;
+				break;
+			}
+
+			case MotionEvent.ACTION_CANCEL: {
+				mActivePointerId = INVALID_POINTER_ID;
+				break;
+			}
+
+			case MotionEvent.ACTION_POINTER_UP: { //non primary pointer going up
+				final int pointerIndex = (ev.getAction() & MotionEvent.ACTION_POINTER_INDEX_MASK) >> MotionEvent.ACTION_POINTER_INDEX_SHIFT;
+				final int pointerId = ev.getPointerId(pointerIndex);
+				if (pointerId == mActivePointerId) {
+					// This was our active pointer going up. Choose a new active pointer and adjust accordingly.
+					final int newPointerIndex = pointerIndex == 0 ? 1 : 0;
+					mLastTouchX = ev.getX(newPointerIndex);
+					mLastTouchY = ev.getY(newPointerIndex);
+					mActivePointerId = ev.getPointerId(newPointerIndex);
+				}
+				break;
+			}
+		}
+
+		return true;
+	}
+
+	private class ScaleListener extends ScaleGestureDetector.SimpleOnScaleGestureListener {
+		@Override
+		public boolean onScale(ScaleGestureDetector detector) {
+			mScaleFactor *= detector.getScaleFactor();
+
+			// Don't let the object get too small or too large.
+			mScaleFactor = Math.max(1f, Math.min(mScaleFactor, 5.0f));
+
+			invalidate();
+			return true;
+		}
+	}
+
+	@SuppressLint("NewApi")
+	private void setFocusRect(int x, int y) {
+		Camera mCamera = mPreviewSurface.getCamera();
+		if (mPreviewSurface.getCamera() == null)
+			Log.e("camera", "TouchView: cannot find mCamera");
+		Camera.Parameters myParameters = mCamera.getParameters();
+
+		if (myParameters.getMaxNumFocusAreas() == 0) {
+			return;
+		}
+		Rect focusRect = new Rect();
+		// calculate the focus area
+		focusRect.set(x - getIconWidth() / 2, y - getIconWidth() / 2, x + getIconWidth() / 2, y + getIconWidth() / 2);
+		ArrayList<Camera.Area> focusArea = new ArrayList<Camera.Area>();
+		focusArea.add(new Camera.Area(focusRect, 1000));
+
+		try {
+			myParameters.setFocusAreas(focusArea);
+
+			mCamera.setParameters(myParameters);
+			mCamera.startPreview();
+			Log.i("camera", "has added focusArea: " + x + ", " + y);
+		} catch (Throwable e) {
+			;
+		}
+
+	}
+
+	public int getPosX() {
+		return (int) mPosX;
+	}
+
+	public int getPosY() {
+		return (int) mPosY;
+	}
+
+	public int getIconWidth() {
+		return (int) (mIcon.getIntrinsicWidth() * mScaleFactor);
+	}
+}

@@ -1,0 +1,258 @@
+package com.example.cameratest;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+
+import android.annotation.SuppressLint;
+import android.app.Activity;
+import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
+import android.graphics.Point;
+import android.hardware.Camera;
+import android.os.Bundle;
+import android.os.Environment;
+import android.util.Log;
+import android.view.Display;
+import android.view.Menu;
+import android.view.View;
+import android.view.View.OnClickListener;
+import android.view.Window;
+import android.view.WindowManager;
+import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.SeekBar;
+import android.widget.TextView;
+import android.widget.Toast;
+
+public class Init extends Activity implements OnClickListener, SeekBar.OnSeekBarChangeListener {
+	private PreviewSurface myPreviewSurface;
+	private TouchView myTouchView;
+	//private Handler mHandler = new Handler();
+
+	Bitmap focus;
+	int displayWidth;
+	int displayHeight;
+
+	@SuppressLint("NewApi")
+	@Override
+	protected void onCreate(Bundle savedInstanceState) {
+		super.onCreate(savedInstanceState);
+		setFullScreen();
+		setContentView(R.layout.activity_init);
+
+		Display display = getWindowManager().getDefaultDisplay();
+		Point size = new Point();
+		display.getSize(size);
+		displayWidth = size.x;
+		displayHeight = size.y;
+
+		myPreviewSurface = new PreviewSurface(this);
+		FrameLayout myFrameLayout = (FrameLayout) findViewById(R.id.preview);
+		myFrameLayout.addView(myPreviewSurface);
+
+		myTouchView = new TouchView(this, displayWidth, displayHeight, myPreviewSurface);
+		if(myPreviewSurface.getCamera() == null) Log.i("camera","Init: null camera fuck you");
+		myFrameLayout.addView(myTouchView);
+
+		// FrameLayout toolBar = (FrameLayout) findViewById(R.id.toolBar);
+		// toolBar.setLayoutParams(new
+		// RelativeLayout.LayoutParams(LayoutParams.FILL_PARENT, displayHeight /
+		// 10));
+
+		Button autoFocusButton = (Button) findViewById(R.id.autoFocusButton);
+		autoFocusButton.setOnClickListener(this);
+
+		SeekBar seekBar = (SeekBar) findViewById(R.id.zoomRate);
+		seekBar.setOnSeekBarChangeListener(this);
+
+		//mHandler.postDelayed(runnable, 750);
+
+	}
+
+	private void setFullScreen() {
+		requestWindowFeature(Window.FEATURE_NO_TITLE);
+		getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+	}
+	
+	/*
+	final Runnable runnable = new Runnable() {
+		public void run() {
+			myPreviewSurface.getCamera().autoFocus(tempAutoFocusCallback);
+			mHandler.postDelayed(this, 2000);
+		}
+	};
+	*/
+
+	@Override
+	public boolean onCreateOptionsMenu(Menu menu) {
+		// Inflate the menu; this adds items to the action bar if it is present.
+		getMenuInflater().inflate(R.menu.init, menu);
+		return true;
+	}
+
+	@Override
+	public void onClick(View v) {
+		Button clickedButton = (Button) v;
+		// auto focus
+		if (clickedButton.getId() == R.id.autoFocusButton) {
+			//mHandler.removeCallbacks(runnable);
+			myPreviewSurface.getCamera().autoFocus(myAutoFocusCallback);
+		}
+	}
+
+	@Override
+	public void onProgressChanged(SeekBar arg0, int arg1, boolean arg2) {
+		SeekBar seekBar = (SeekBar) findViewById(R.id.zoomRate);
+		seekBar.setMax(myPreviewSurface.getCamera().getParameters().getMaxZoom());
+
+		seekBar.setKeyProgressIncrement(1);
+
+		if (arg1 >= 1) {
+			TextView zoomLabel = (TextView) findViewById(R.id.zoomLabel);
+			zoomLabel.setText("zoomString");
+			String zoomString = String.format("%1$dX", arg1);
+			zoomLabel.setText(zoomString);
+			if (myPreviewSurface.getCamera().getParameters().isSmoothZoomSupported()) {
+				myPreviewSurface.getCamera().startSmoothZoom(arg1);
+			} else if (myPreviewSurface.getCamera().getParameters().isZoomSupported()) {
+				Camera.Parameters parameters = myPreviewSurface.getCamera().getParameters();
+				parameters.setZoom(arg1);
+				myPreviewSurface.getCamera().setParameters(parameters);
+			}
+
+		}
+	}
+
+	@Override
+	public void onStartTrackingTouch(SeekBar arg0) {
+		// TODO Auto-generated method stub
+
+	}
+
+	@Override
+	public void onStopTrackingTouch(SeekBar arg0) {
+		// TODO Auto-generated method stub
+
+	}
+	
+	/*
+	Camera.AutoFocusCallback tempAutoFocusCallback = new Camera.AutoFocusCallback() {
+		public void onAutoFocus(boolean success, Camera camera) {
+		}
+	};
+	*/
+
+	Camera.AutoFocusCallback myAutoFocusCallback = new Camera.AutoFocusCallback() {
+		public void onAutoFocus(boolean success, Camera camera) {
+			if (success) {
+				camera.takePicture(myShutterCallback, null, myJpegCallback);
+			}
+		}
+	};
+
+	Camera.ShutterCallback myShutterCallback = new Camera.ShutterCallback() {
+		public void onShutter() {
+			// Toast.makeText(Init.this, "Shutter started", Toast.LENGTH_LONG).show();
+		}
+	};
+
+	Camera.PictureCallback myJpegCallback = new Camera.PictureCallback() {
+		@SuppressLint("NewApi")
+		@Override
+		public void onPictureTaken(byte[] data, Camera camera) {
+			Bitmap cameraBitmap, capBitmap;
+			FileOutputStream outStream = null;
+			Intent newIntent = new Intent();
+			Bundle newBundle = new Bundle();
+			int red = 0;
+			int green = 0;
+			int blue = 0;
+			int width;
+			int height;
+			int cutLength;
+
+			cameraBitmap = BitmapFactory.decodeByteArray(data, 0, data.length);
+			// switch width and height
+			height = cameraBitmap.getWidth();
+			width = cameraBitmap.getHeight();
+
+			// rotate bitmap
+			Matrix m = new Matrix();
+			m.setRotate(90);
+
+			// temporarily switch width and height here, otherwise will fail
+			cameraBitmap = Bitmap.createBitmap(cameraBitmap, 0, 0, height, width, m, true);
+			cutLength = (int) (myTouchView.getIconWidth() * (width / displayWidth));
+			capBitmap = portionBitmap(cameraBitmap, cutLength, width, height);
+			Toast.makeText(Init.this, "cutLength: " + String.valueOf(cutLength), Toast.LENGTH_SHORT).show();
+			Toast.makeText(Init.this, "iconWidth: " + String.valueOf(myTouchView.getIconWidth()), Toast.LENGTH_SHORT).show();
+
+			// start to calculate RGB
+			for (int i = 0; i < myTouchView.getIconWidth(); i++) {
+				for (int j = 0; j < myTouchView.getIconWidth(); j++) {
+					int value = capBitmap.getPixel(i, j);
+					red += (value >> 16) & 0xFF;
+					green += (value >> 8) & 0xFF;
+					blue += value & 0xFF;
+				}
+			}
+			red /= cutLength * cutLength;
+			green /= cutLength * cutLength;
+			blue /= cutLength * cutLength;
+			newBundle.putString("RGBvalue", String.format("RGB value: %d, %d, %d", red, green, blue));
+			newIntent.setClass(Init.this, com.example.cameratest.Result.class);
+			newIntent.putExtras(newBundle);
+
+			try {
+				File path = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM);
+				if (!path.exists())
+					path.mkdirs();
+
+				String timeMillis = String.format("%1$d", System.currentTimeMillis());
+				String filename = timeMillis + ".jpg";
+				File file = new File(path, filename);
+				outStream = new FileOutputStream(file);
+				cameraBitmap.compress(Bitmap.CompressFormat.JPEG, 100, outStream);
+				// flush the original bitmap
+				outStream.flush();
+				outStream.close();
+
+				// compress bitmap into outStream and flush
+				String capFilename = timeMillis + "(1).jpg";
+				file = new File(path, capFilename);
+				outStream = new FileOutputStream(file);
+				capBitmap.compress(Bitmap.CompressFormat.JPEG, 100, outStream);
+				outStream.flush();
+				outStream.close();
+
+				Toast.makeText(Init.this, "store in SDcard", Toast.LENGTH_SHORT).show();
+
+				Toast.makeText(Init.this, "相片大小:" + data.length, Toast.LENGTH_SHORT).show();
+				Toast.makeText(Init.this, "儲存位置:" + path, Toast.LENGTH_SHORT).show();
+
+			} catch (FileNotFoundException e) {
+				Toast.makeText(Init.this, "FileNotFound, 檔案無法寫入", Toast.LENGTH_SHORT).show();
+				e.printStackTrace();
+			} catch (IOException e) {
+				Toast.makeText(Init.this, "IO Error, 檔案無法寫入", Toast.LENGTH_SHORT).show();
+				e.printStackTrace();
+			} finally {
+				startActivity(newIntent);
+			}
+
+		}
+
+		// capture bitmap and analyze
+		private Bitmap portionBitmap(Bitmap bitmap, int cutLength, int cameraWidth, int cameraHeight) {
+			Bitmap capBitmap;
+			int cutX = (int) (myTouchView.getPosX() * (cameraWidth / displayWidth));
+			int cutY = (int) (myTouchView.getPosY() * (cameraHeight / displayHeight));
+			capBitmap = Bitmap.createBitmap(bitmap, cutX, cutY, cutLength, cutLength);
+			return capBitmap;
+		}
+	};
+}
